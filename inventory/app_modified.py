@@ -6,7 +6,7 @@ import sqlite3
 import seaborn as sns
 from PIL import Image
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 import io
 import base64
 import uuid
@@ -28,7 +28,9 @@ st.set_page_config(
 )
 
 # Create a connection to the database
-conn = sqlite3.connect('/tmp/inventory.db', check_same_thread=False)
+import os
+db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'inventory.db')
+conn = sqlite3.connect(db_path, check_same_thread=False)
 c = conn.cursor()
 
 # Create tables if they don't exist
@@ -398,7 +400,7 @@ def main_app():
         total_sales = c.fetchone()[0]
         if total_sales is None:
             total_sales = 0
-        col3.metric("إجمالي المبيعات في الفرع", f"{total_sales:.2f} ريال")
+        col3.metric("إجمالي المبيعات في الفرع", f"{total_sales:.2f} دينار")
         
         # Recent activities
         st.subheader("أحدث الأنشطة")
@@ -504,15 +506,15 @@ def main_app():
             category_dict = {cat[0]: cat[1] for cat in categories}
             
             if category_dict:
-                category_id = st.selectbox("اختر الفئة للتعديل", options=list(category_dict.keys()), format_func=lambda x: category_dict[x])
+                category_id = st.selectbox("اختر الفئة للتعديل", options=list(category_dict.keys()), format_func=lambda x: category_dict[x],key="edit_category_selectbox")
                 
                 # Get current category data
                 c.execute("SELECT name, description FROM categories WHERE id = ?", (category_id,))
                 category_data = c.fetchone()
                 
                 if category_data:
-                    updated_name = st.text_input("اسم الفئة", value=category_data[0])
-                    updated_description = st.text_area("وصف الفئة", value=category_data[1] or "")
+                    updated_name = st.text_input("اسم الفئة", value=category_data[0], key=f"update_cat_name_{category_id}")
+                    updated_description = st.text_area("وصف الفئة", value=category_data[1] or "", key=f"update_cat_desc_{category_id}")
                     
                     if st.button("تحديث الفئة"):
                         try:
@@ -581,7 +583,7 @@ def main_app():
             with col1:
                 name = st.text_input("اسم المنتج")
                 description = st.text_area("وصف المنتج")
-                category = st.selectbox("الفئة", options=list(category_dict.keys()), format_func=lambda x: category_dict[x])
+                category = st.selectbox("الفئة", options=list(category_dict.keys()), format_func=lambda x: category_dict[x],key="add_product_category")
             
             with col2:
                 price = st.number_input("السعر", min_value=0.0, format="%.2f")
@@ -646,7 +648,8 @@ def main_app():
                             category_index = list(category_dict.keys()).index(product_data[2])
                         updated_category = st.selectbox("الفئة", options=list(category_dict.keys()), 
                                                       format_func=lambda x: category_dict[x], 
-                                                      index=category_index)
+                                                      index=category_index,
+                                                      key=f"update_category_{product_id}")
                     
                     with col2:
                         updated_price = st.number_input("السعر", value=float(product_data[3]) if product_data[3] else 0.0, format="%.2f")
@@ -696,7 +699,7 @@ def main_app():
                     st.markdown(f"**الاسم:** {product_details[0]}")
                     st.markdown(f"**الوصف:** {product_details[1] or 'لا يوجد'}")
                     st.markdown(f"**الفئة:** {product_details[2] or 'غير مصنف'}")
-                    st.markdown(f"**السعر:** {product_details[3]} ريال")
+                    st.markdown(f"**السعر:** {product_details[3]} دينار")
                 
                 # Check if product is used in inventory or sales
                 c.execute("SELECT SUM(quantity) FROM inventory WHERE product_id = ?", (product_to_delete,))
@@ -750,7 +753,7 @@ def main_app():
                         "اسم المنتج": prod[1],
                         "الوصف": prod[2] or "",
                         "الفئة": prod[3] or "غير مصنف",
-                        "السعر": f"{prod[4]} ريال" if prod[4] else "0.00 ريال",
+                        "السعر": f"{prod[4]} دينار" if prod[4] else "0.00 دينار",
                         "الباركود": prod[5] or ""
                     })
                 
@@ -797,8 +800,8 @@ def main_app():
                         "اسم المنتج": inv[1],
                         "الفئة": inv[2] or "غير مصنف",
                         "الكمية": inv[3],
-                        "سعر الوحدة": f"{inv[4]} ريال" if inv[4] else "0.00 ريال",
-                        "القيمة الإجمالية": f"{inv[5]} ريال" if inv[5] else "0.00 ريال",
+                        "سعر الوحدة": f"{inv[4]} دينار" if inv[4] else "0.00 دينار",
+                        "القيمة الإجمالية": f"{inv[5]} دينار" if inv[5] else "0.00 دينار",
                         "آخر تحديث": inv[6],
                         "معرف المنتج": inv[7]
                     })
@@ -811,7 +814,7 @@ def main_app():
                 category_dict = {0: "جميع الفئات"}
                 category_dict.update({cat[0]: cat[1] for cat in categories})
                 
-                filter_category = st.selectbox("تصفية حسب الفئة", options=list(category_dict.keys()), format_func=lambda x: category_dict[x])
+                filter_category = st.selectbox("تصفية حسب الفئة", options=list(category_dict.keys()), format_func=lambda x: category_dict[x], key="filter_inventory_category")
                 
                 if filter_category != 0:
                     df_filtered = df_inventory[df_inventory['الفئة'] == category_dict[filter_category]]
@@ -838,14 +841,14 @@ def main_app():
                 total_value = 0
                 for value in df_filtered['القيمة الإجمالية']:
                     try:
-                        if isinstance(value, str) and "ريال" in value:
-                            total_value += float(value.replace(" ريال", ""))
+                        if isinstance(value, str) and "دينار" in value:
+                            total_value += float(value.replace(" دينار", ""))
                     except:
                         pass
                 
                 col1, col2 = st.columns(2)
                 col1.metric("إجمالي عدد القطع", total_items)
-                col2.metric("إجمالي قيمة المخزون", f"{total_value:.2f} ريال")
+                col2.metric("إجمالي قيمة المخزون", f"{total_value:.2f} دينار")
                 
                 # Show inventory by category pie chart
                 st.subheader("توزيع المخزون حسب الفئات")
@@ -1172,7 +1175,7 @@ def main_app():
                 # Get products for dropdown
                 c.execute("SELECT id, name, price FROM products")
                 products = c.fetchall()
-                product_dict = {prod[0]: f"{prod[1]} - {prod[2]} ريال" for prod in products}
+                product_dict = {prod[0]: f"{prod[1]} - {prod[2]} دينار" for prod in products}
                 
                 if product_dict:
                     selected_product = st.selectbox("اختر المنتج", options=list(product_dict.keys()), format_func=lambda x: product_dict[x])
@@ -1195,7 +1198,7 @@ def main_app():
                     sale_price = st.number_input("سعر البيع للوحدة", min_value=0.0, value=float(product_price), format="%.2f")
                     
                     total_amount = quantity * sale_price
-                    st.metric("إجمالي المبلغ", f"{total_amount:.2f} ريال")
+                    st.metric("إجمالي المبلغ", f"{total_amount:.2f} دينار")
                 else:
                     st.error("لا توجد منتجات متاحة للبيع. يرجى إضافة منتجات أولاً.")
             
@@ -1265,7 +1268,7 @@ def main_app():
                         "المعرف": sale[0],
                         "المنتج": sale[1],
                         "الكمية": sale[2],
-                        "المبلغ": f"{sale[3]:.2f} ريال",
+                        "المبلغ": f"{sale[3]:.2f} دينار",
                         "التاريخ": sale[4],
                         "رقم المرجع": sale[5],
                         "الفرع": sale[6]
@@ -1285,7 +1288,7 @@ def main_app():
                 total_items_sold = sum(sale[2] for sale in sales_data)
                 
                 col1, col2 = st.columns(2)
-                col1.metric("إجمالي المبيعات", f"{total_sales:.2f} ريال")
+                col1.metric("إجمالي المبيعات", f"{total_sales:.2f} دينار")
                 col2.metric("إجمالي القطع المباعة", total_items_sold)
             else:
                 st.info("لا توجد مبيعات في الفترة المحددة")
@@ -1323,7 +1326,7 @@ def main_app():
                         product_sales_list.append({
                             "المنتج": sale[0],
                             "إجمالي الكمية": sale[1],
-                            "إجمالي المبلغ": f"{sale[2]:.2f} ريال"
+                            "إجمالي المبلغ": f"{sale[2]:.2f} دينار"
                         })
                     
                     df_product_sales = pd.DataFrame(product_sales_list)
@@ -1338,7 +1341,7 @@ def main_app():
                     # Show product sales chart
                     st.subheader("رسم بياني للمبيعات حسب المنتج")
                     
-                    # Extract amounts without "ريال" for plotting
+                    # Extract amounts without "دينار" for plotting
                     df_for_chart = pd.DataFrame({
                         "المنتج": [sale[0] for sale in product_sales],
                         "إجمالي المبيعات": [sale[2] for sale in product_sales]
@@ -1370,7 +1373,7 @@ def main_app():
                         daily_sales_list.append({
                             "اليوم": sale[0],
                             "إجمالي الكمية": sale[1],
-                            "إجمالي المبلغ": f"{sale[2]:.2f} ريال"
+                            "إجمالي المبلغ": f"{sale[2]:.2f} دينار"
                         })
                     
                     df_daily_sales = pd.DataFrame(daily_sales_list)
@@ -1385,7 +1388,7 @@ def main_app():
                     # Show daily sales chart
                     st.subheader("رسم بياني للمبيعات اليومية")
                     
-                    # Extract amounts without "ريال" for plotting
+                    # Extract amounts without "دينار" for plotting
                     df_for_chart = pd.DataFrame({
                         "اليوم": [sale[0] for sale in daily_sales],
                         "إجمالي المبيعات": [sale[2] for sale in daily_sales]
@@ -1413,7 +1416,7 @@ def main_app():
                         monthly_sales_list.append({
                             "الشهر": sale[0],
                             "إجمالي الكمية": sale[1],
-                            "إجمالي المبلغ": f"{sale[2]:.2f} ريال"
+                            "إجمالي المبلغ": f"{sale[2]:.2f} دينار"
                         })
                     
                     df_monthly_sales = pd.DataFrame(monthly_sales_list)
@@ -1428,7 +1431,7 @@ def main_app():
                     # Show monthly sales chart
                     st.subheader("رسم بياني للمبيعات الشهرية")
                     
-                    # Extract amounts without "ريال" for plotting
+                    # Extract amounts without "دينار" for plotting
                     df_for_chart = pd.DataFrame({
                         "الشهر": [sale[0] for sale in monthly_sales],
                         "إجمالي المبيعات": [sale[2] for sale in monthly_sales]
@@ -1470,8 +1473,8 @@ def main_app():
                         "المنتج": inv[0],
                         "الفئة": inv[1] or "غير مصنف",
                         "الكمية": inv[2],
-                        "سعر الوحدة": f"{inv[3]} ريال" if inv[3] else "0.00 ريال",
-                        "القيمة الإجمالية": f"{inv[4]} ريال" if inv[4] else "0.00 ريال"
+                        "سعر الوحدة": f"{inv[3]} دينار" if inv[3] else "0.00 دينار",
+                        "القيمة الإجمالية": f"{inv[4]} دينار" if inv[4] else "0.00 دينار"
                     })
                 
                 df_inventory = pd.DataFrame(inventory_list)
@@ -1483,7 +1486,7 @@ def main_app():
                 # Show summary metrics
                 col1, col2 = st.columns(2)
                 col1.metric("إجمالي عدد القطع", total_items)
-                col2.metric("إجمالي قيمة المخزون", f"{total_value:.2f} ريال")
+                col2.metric("إجمالي قيمة المخزون", f"{total_value:.2f} دينار")
                 
                 # Show inventory table
                 st.subheader("تفاصيل المخزون")
@@ -1526,7 +1529,7 @@ def main_app():
                         "المنتج": inv[0],
                         "الفئة": inv[1] or "غير مصنف",
                         "الكمية المتبقية": inv[2],
-                        "سعر الوحدة": f"{inv[3]} ريال" if inv[3] else "0.00 ريال",
+                        "سعر الوحدة": f"{inv[3]} دينار" if inv[3] else "0.00 دينار",
                         "الفرع": inv[4]
                     })
                 
@@ -1582,7 +1585,7 @@ def main_app():
                     sales_list.append({
                         "المنتج": sale[0],
                         "الكمية المباعة": sale[1],
-                        "إجمالي المبيعات": f"{sale[2]:.2f} ريال",
+                        "إجمالي المبيعات": f"{sale[2]:.2f} دينار",
                         "الفرع": sale[3]
                     })
                 
@@ -1595,7 +1598,7 @@ def main_app():
                 # Show summary metrics
                 col1, col2 = st.columns(2)
                 col1.metric("إجمالي القطع المباعة", total_quantity)
-                col2.metric("إجمالي المبيعات", f"{total_amount:.2f} ريال")
+                col2.metric("إجمالي المبيعات", f"{total_amount:.2f} دينار")
                 
                 # Show sales table
                 st.subheader("تفاصيل المبيعات")
@@ -1608,7 +1611,7 @@ def main_app():
                 st.subheader("توزيع المبيعات حسب الفروع")
                 
                 branch_summary = df_sales.groupby('الفرع')['إجمالي المبيعات'].sum().reset_index()
-                branch_summary['إجمالي المبيعات'] = branch_summary['إجمالي المبيعات'].str.replace(' ريال', '').astype(float)
+                branch_summary['إجمالي المبيعات'] = branch_summary['إجمالي المبيعات'].str.replace(' دينار', '').astype(float)
                 
                 if not branch_summary.empty and branch_summary['إجمالي المبيعات'].sum() > 0:
                     fig = px.pie(branch_summary, values='إجمالي المبيعات', names='الفرع', hole=0.4)
@@ -1659,8 +1662,8 @@ def main_app():
                         "المنتج": perf[0],
                         "الفئة": perf[1] or "غير مصنف",
                         "الكمية المباعة": total_sold,
-                        "إجمالي الإيرادات": f"{total_revenue:.2f} ريال",
-                        "متوسط سعر البيع": f"{avg_unit_price:.2f} ريال",
+                        "إجمالي الإيرادات": f"{total_revenue:.2f} دينار",
+                        "متوسط سعر البيع": f"{avg_unit_price:.2f} دينار",
                         "عدد عمليات البيع": sale_count
                     })
                 
@@ -1924,8 +1927,8 @@ def main_app():
                         confirm_updated_password = st.text_input("تأكيد كلمة المرور الجديدة", type="password") if update_password else None
                     
                     with col2:
-                        updated_role = st.selectbox("الدور", ["مستخدم", "مشرف", "admin"], index=["مستخدم", "مشرف", "admin"].index(user_data[1]))
-                        updated_active = st.checkbox("نشط", value=user_data[3])
+                        updated_role = st.selectbox("الدور", ["مستخدم", "مشرف", "admin"], index=["مستخدم", "مشرف", "admin"].index(user_data[1]), key=f"update_role_{user_id}")
+                        updated_active = st.checkbox("نشط", value=user_data[3], key=f"active_checkbox_{user_data[0]}")
                         
                         current_permissions = user_data[2].split(",") if user_data[2] else []
                         permissions_options = ["view", "add", "edit", "delete", "manage_users"]
